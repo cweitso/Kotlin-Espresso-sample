@@ -55,6 +55,13 @@ android {
     // To run Android relevant tests under test dir.
     // See also http://robolectric.org/migrating/#project-configuration
     unitTests.isIncludeAndroidResources = true
+    // Stream per-test PASSED/FAILED/SKIPPED and any captured output to terminal
+    unitTests.all {
+      it.testLogging {
+        events("passed", "skipped", "failed", "standardOut", "standardError")
+        showStandardStreams = true
+      }
+    }
   }
 }
 
