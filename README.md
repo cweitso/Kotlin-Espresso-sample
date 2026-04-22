@@ -1,6 +1,6 @@
 # Calculator App — Espresso UI Test Suite
 
-A Kotlin + Espresso test suite for a simple calculator Android app. Demonstrates Page Object pattern for mobile UI testing, shared test specs across Robolectric and Instrumented runners, and structured AC (All Clear) button validation.
+A comprehensive Kotlin + Espresso test suite for a calculator Android app, demonstrating the Page Object pattern and multi-environment test architecture. Tests run via both Robolectric (JVM-based) and Instrumented (emulator/device) runners, with shared spec logic and validation for the All Clear button.
 
 ## How to run
 
@@ -18,7 +18,7 @@ Both commands run the same 8 tests — 4 arithmetic tests from the original code
 
 ### Verbose test output
 
-By default Gradle only prints a summary. To see per-test PASSED / FAILED lines — plus any stdout/stderr the tests emit — add the following to the `android` block in `app/build.gradle.kts`:
+By default, Gradle outputs only a summary. To enable per-test result logging and capture test output, add the following configuration to the `android` block in `app/build.gradle.kts`:
 
 ```kotlin
 testOptions {
@@ -32,9 +32,9 @@ testOptions {
 }
 ```
 
-`showStandardStreams = true` is required for `standardOut` and `standardError` to actually appear; without it those two events are registered but produce no output.
+The `showStandardStreams = true` flag is necessary to print captured output; without it, the `standardOut` and `standardError` events are registered but produce no output.
 
-You will then see output like:
+With this configuration, test results appear on the terminal as:
 
 ```
 net.pot8os.kotlintestsample.RobolectricCalculatorTest > testSum PASSED
@@ -47,13 +47,13 @@ net.pot8os.kotlintestsample.RobolectricAllClearTest > testAllClearMidOperation P
 net.pot8os.kotlintestsample.RobolectricAllClearTest > testAllClearThenNewCalculation PASSED
 ```
 
-If Gradle skips the tests with `32 up-to-date` (nothing changed since the last run), force a rerun:
+If Gradle reports all tests as `up-to-date` and skips execution, use `--rerun` to bypass the build cache:
 
 ```bash
 ./gradlew :app:testDebugUnitTest --rerun
 ```
 
-> Note: This only affects Robolectric (`testDebugUnitTest`). Instrumented test output is controlled by the Android test runner and appears in the HTML report under `app/build/reports/androidTests/`.
+> Note: `--rerun` affects only Robolectric tests. Instrumented tests always redeploy the APK to the target device; Gradle does not cache their results, so `--rerun` has no effect. Instrumented test results are available in the HTML report at `app/build/reports/androidTests/`.
 
 ### Running a single class or test method
 
@@ -68,13 +68,8 @@ If Gradle skips the tests with `32 up-to-date` (nothing changed since the last r
 
 **Single class (Instrumented):**
 ```bash
-# Only the 4 AC tests
 ./gradlew :app:connectedDebugAndroidTest \
   -Pandroid.testInstrumentationRunnerArguments.class=net.pot8os.kotlintestsample.InstrumentedAllClearTest
-  
-# Only the 4 arithmetic tests
-./gradlew :app:connectedDebugAndroidTest \
-  -Pandroid.testInstrumentationRunnerArguments.class=net.pot8os.kotlintestsample.InstrumentedCalculatorTest
 ```
 
 **Single test method (Robolectric):**
@@ -98,34 +93,32 @@ If Gradle skips the tests with `32 up-to-date` (nothing changed since the last r
 ./gradlew :app:testDebugUnitTest --tests "*.testAllClear*"
 ```
 
-> Robolectric uses `--tests`, Instrumented uses `-Pandroid.testInstrumentationRunnerArguments.class=`. The syntax differs because they run on different test runners.
+> Robolectric uses `--tests`, Instrumented uses `-Pandroid.testInstrumentationRunnerArguments.class=`. The syntax is different because they run on different test runners.
 
-If Gradle says **"no tests found"**, add `--rerun` to bypass the build cache:
+If Gradle says **"no tests found"**, it's probably the build cache — add `--rerun`:
 ```bash
 ./gradlew :app:testDebugUnitTest --tests "*AllClear*" --rerun
 ```
 
-> `--rerun` only applies to Robolectric. Instrumented tests (`connectedDebugAndroidTest`) always re-deploy the APK to the device and rerun from scratch — Gradle never caches their results, so `--rerun` has no effect on them.
+## Architecture
 
-## What I added
-
-All existing code is untouched. My changes are five new files:
+This project extends the original codebase with a Page Object pattern implementation for test maintenance and readability. The following five new files were added while preserving all existing application and test code:
 
 ```
 app/src/testShared/kotlin/
   page/
-    BasePage.kt             Shared navigation helpers (extension point for
-                             multi-screen apps — back button, toolbar, etc.)
+    BasePage.kt             Base class with shared navigation helpers
+                             (pressBack, openMenu — stubs for now, ready
+                             for multi-screen expansion).
 
-    CalculatorPage.kt       Page Object for the calculator screen. Wraps
-                             every Espresso interaction behind intent-revealing
-                             methods: typeNumber(), pressAdd(), verifyDisplay().
-                             Digit-to-resource-ID mapping lives here so if the
-                             layout changes, only this file needs updating.
+    CalculatorPage.kt       Page Object for the calculator screen.
+                             All Espresso calls go through here — typeNumber(),
+                             pressAdd(), verifyDisplay(), etc. If button IDs
+                             change, you only need to update this file.
 
   AllClearSpec.kt           Four AC button test cases as an abstract class.
-                             Uses CalculatorPage exclusively — zero direct
-                             Espresso imports in the test logic.
+                             No direct Espresso imports in the test logic;
+                             everything goes through CalculatorPage.
 
 app/src/androidTest/kotlin/.../
   InstrumentedAllClearTest.kt   Concrete runner for real device / emulator.
@@ -134,33 +127,40 @@ app/src/test/kotlin/.../
   RobolectricAllClearTest.kt    Concrete runner for JVM (Robolectric).
 ```
 
-The structure follows the existing project convention: shared test logic lives in `testShared/`, concrete runners in `test/` and `androidTest/`. `AllClearSpec` parallels `CalculatorSpec` — both are abstract classes inherited by environment-specific runners.
+- **`BasePage`** — Abstract base class providing shared navigation helpers (`pressBack()`, `openMenu()`). Serves as an extension point for multi-screen test architecture.
+- **`CalculatorPage`** — Page Object encapsulating all calculator UI interactions. Methods like `typeNumber()`, `pressAdd()`, `verifyDisplay()` replace direct Espresso calls. The `digitButtons` map centralizes button ID mappings, so layout changes only require updates in this file.
+- **`AllClearSpec`** — Abstract spec containing four AC button test scenarios. No direct Espresso imports in test logic; all interactions route through `CalculatorPage`.
 
-## Test cases
+This structure follows the project's existing convention: shared test specifications reside in `testShared/`, while environment-specific runners are in `test/` and `androidTest/`. Both `AllClearSpec` and `CalculatorSpec` are abstract classes inherited by their respective concrete runners, enabling test reuse across multiple execution contexts.
 
-4 scenarios, each testing AC under a different calculator state:
+## Test scenarios
 
-| Test | What it does | What it validates |
-|------|-------------|-------------------|
-| `testAllClearAfterDigitEntry` | Type 789, press AC | Display resets to "0" with only `current` populated |
-| `testAllClearAfterCalculation` | Compute 25 + 75 = 100, press AC | Display resets after a completed operation (memory popped, operator cleared) |
-| `testAllClearMidOperation` | Type 42 + 8, press AC without `=` | Memory stack and pending operator are both cleared |
-| `testAllClearThenNewCalculation` | AC, then compute 3 × 7 | New calculation yields 21, proving no residual state from before AC |
+Four distinct test cases cover the All Clear button across different calculator states:
 
-The last test is the most important one — it catches the case where AC clears the display but leaves stale values in the ViewModel's memory stack.
+| Test | Setup | Validation |
+|------|-------|-----------|
+| `testAllClearAfterDigitEntry` | Enter 789, press AC | Display resets to "0"; internal state has only `current` populated |
+| `testAllClearAfterCalculation` | Compute 25 + 75 = 100, press AC | Display resets to "0"; memory stack is popped, operator is cleared |
+| `testAllClearMidOperation` | Enter 42, press +, enter 8, press AC | Display resets to "0"; memory stack and pending operator are both cleared |
+| `testAllClearThenNewCalculation` | Press AC, then compute 3 × 7 | Result is 21 (no residual state from previous calculation) |
 
-## A note on test execution order
+The last scenario is particularly important: it detects the case where AC clears the display visually but leaves stale values in the ViewModel's memory stack. This bug would only surface in a subsequent calculation.
 
-JUnit 4 does **not** guarantee the execution order of test methods. Internally it uses `getDeclaredMethods()`, whose ordering depends on the JVM implementation and may differ from the source file order. The tests above might run in any permutation.
+## Test execution order
 
-This is fine because every test method is preceded by `@Before setup()`, which launches a fresh `CalculatorFragment`. Each test starts from a clean state (`current = 0`, `memory = empty`, `figure = NONE`), so results are independent of execution order.
+JUnit 4 does not guarantee test method execution order by specification. The framework uses reflection (`getDeclaredMethods()`) to discover test methods, and the resulting order depends on the JVM implementation. Tests may execute in any order, not necessarily the order they appear in source code.
 
-## Page Object design
+This architecture mitigates this uncertainty through isolation. Each test method is preceded by a `@Before` fixture that launches a fresh `CalculatorFragment` with clean state (`current = 0`, `memory = empty`, `figure = NONE`). Tests are therefore independent — the execution order cannot affect correctness or outcomes.
 
-`CalculatorPage` encapsulates all Espresso calls so that test specs read like user intent rather than framework boilerplate. Compare the original style:
+## Page Object pattern
 
+The Page Object pattern abstracts UI interaction details away from test logic. Test code reads as a sequence of user actions rather than framework calls. This improves readability and locates brittle selectors in one place.
+
+Example comparison:
+
+**Without Page Object (original code):**
 ```kotlin
-// CalculatorSpec (original) — 9 lines of Espresso calls for 123 + 321
+// 9 lines of Espresso framework calls to compute 123 + 321
 onView(withId(R.id.button_1)).perform(click())
 onView(withId(R.id.button_2)).perform(click())
 onView(withId(R.id.button_3)).perform(click())
@@ -168,10 +168,9 @@ onView(withId(R.id.button_sum)).perform(click())
 // ... 5 more lines
 ```
 
-with the Page Object approach:
-
+**With Page Object (new code):**
 ```kotlin
-// AllClearSpec — same operation in 5 readable lines
+// Same operation, expressed as user intent
 calculator.typeNumber(123)
 calculator.pressAdd()
 calculator.typeNumber(321)
@@ -179,7 +178,9 @@ calculator.pressEquals()
 calculator.verifyDisplay("444")
 ```
 
-`CalculatorPage` inherits from `BasePage`, which currently provides `pressBack()` and `openMenu()` as forward-compatible stubs. If the app grows to multiple screens, new Page Objects can inherit shared navigation from `BasePage` without refactoring.
+`CalculatorPage` maintains a `digitButtons` map that translates digit values to resource IDs. When the layout changes, button IDs are updated in this map only — test code remains unchanged.
+
+`BasePage` provides a foundation for multi-screen navigation (`pressBack()`, `openMenu()`). New Page Objects can inherit shared navigation behavior without duplication.
 
 ## Project structure
 
@@ -200,10 +201,18 @@ app/src/
     └── InstrumentedAllClearTest.kt   Instrumented runner for AC tests (new)
 ```
 
-## Why no negative tests?
+## Test coverage and design rationale
 
-`onClickedAllClear()` in the ViewModel has no conditional branches — it unconditionally resets `current`, `memory`, and `figure` regardless of prior state. There's no failure path to test. The four scenarios above cover all meaningful state combinations (digits only, post-calculation, mid-operation, and post-AC reuse). Edge cases like overflow or division-by-zero are better suited for ViewModel unit tests, not UI-level Espresso tests.
+The All Clear button's implementation contains no conditional branches — it unconditionally resets `current`, `memory`, and `figure` regardless of prior state. Therefore, there is no negative or error path to test at the UI level.
+
+The four test scenarios above cover all meaningful state combinations at the UI boundary:
+- Isolated digit entry
+- Post-calculation state with populated memory stack
+- Mid-operation state with pending operator
+- Post-AC recovery and subsequent calculation
+
+Edge cases such as arithmetic overflow or division-by-zero belong in ViewModel unit tests, not in UI-level Espresso tests. Maintaining clear scope boundaries improves test maintainability and diagnostic clarity.
 
 ## Attribution
 
-Forked from [cardinalblue/Kotlin-Espresso-sample](https://github.com/cardinalblue/Kotlin-Espresso-sample), originally authored by So Nakamura. 
+Forked from [cardinalblue/Kotlin-Espresso-sample](https://github.com/cardinalblue/Kotlin-Espresso-sample), originally authored by So Nakamura.
